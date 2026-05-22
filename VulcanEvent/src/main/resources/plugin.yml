@@ -1,0 +1,9 @@
+name: VulcanEvent
+version: 1.0
+main: my.vulcan.event.Main
+api-version: 1.16
+commands:
+  vulcan:
+    description: Управление ивентом Вулкан
+    permission: vulcan.admin
+    usage: /vulcan [start/stop/reload/add]

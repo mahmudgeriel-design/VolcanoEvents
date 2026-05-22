@@ -1,0 +1,21 @@
+settings:
+  world: "world"
+  duration-seconds: 300      # Время извержения вулкана (5 минут)
+  drop-period-ticks: 30      # Как часто летят вещи (30 тиков = 1.5 сек)
+  auto-event-delay-minutes: 60 # Интервал автозапуска ивента
+  rtp:
+    min-x: -3000
+    max-x: 3000
+    min-z: -3000
+    max-z: 3000
+
+chances:
+  common: 50.0
+  rare: 30.0
+  epic: 13.0
+  mythic: 5.0
+  legendary: 2.0
+
+messages:
+  bossbar-title: "&#cc0000&l🌋 Извержение Древнего Вулкана! 🌋"
+  stop: "&#ff4500&l[ВУЛКАН] &7Магма полностью остыла. Извержение вулкана завершено!"
