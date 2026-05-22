@@ -10,12 +10,16 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 import java.util.*;
 
-public class VulcanManager {
+public class VulcanManager implements Listener {
     private final Main plugin;
     private BukkitTask eventTask;
     private Location vulcanLocation;
@@ -38,10 +42,10 @@ public class VulcanManager {
         if (eventTask != null) return;
         String worldName = plugin.getConfig().getString("settings.world-name", "rtp");
         World world = Bukkit.getWorld(worldName);
-        if (world == null) {
-            plugin.getLogger().severe("Мир '" + worldName + "' не найден!");
-            return;
-        }
+        if (world == null) return;
+        
+        Bukkit.getPluginManager().registerEvents(this, plugin);
+
         int minX = plugin.getConfig().getInt("settings.rtp.min-x", 1500);
         int maxX = plugin.getConfig().getInt("settings.rtp.max-x", 5000);
         int minZ = plugin.getConfig().getInt("settings.rtp.min-z", 1500);
@@ -56,13 +60,12 @@ public class VulcanManager {
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1.0f, 0.8f);
         }
         
-        String msg = color("\n&#ff1100&l漏 [ИВЕНТ] ДРЕВНИЙ ВУЛКАН 漏\n&7Началось мощное извержение редких сокровищ!\n&7Локация: &#ffcc00&lX: " + x + " Y: " + y + " Z: " + z + "\n&8禄 Скорее бегите по координатам, чтобы успеть собрать лут!\n");
+        String msg = color("\n&#ff1100&l🌋 [ИВЕНТ] ДРЕВНИЙ ВУЛКАН 🌋\n&7Началось мощное извержение редких сокровищ!\n&7Локация: &#ffcc00&lX: " + x + " Y: " + y + " Z: " + z + "\n&8» Скорее бегите по координатам, чтобы успеть собрать лут!\n");
         Bukkit.broadcastMessage(msg);
         
         buildVolcanoStructure();
-        String barTitle = color(plugin.getConfig().getString("messages.bossbar-title", "&#cc0000&l漏 Извержение Древнего Вулкана! 漏"));
+        String barTitle = color(plugin.getConfig().getString("messages.bossbar-title", "&#cc0000&l🌋 Извержение Древнего Вулкана! 🌋"));
         bossBar = Bukkit.createBossBar(barTitle, BarColor.RED, BarStyle.SOLID);
-        bossBar.setProgress(1.0);
         
         long durationTicks = plugin.getConfig().getInt("settings.duration-seconds", 300) * 20L;
         long periodTicks = plugin.getConfig().getInt("settings.drop-period-ticks", 20);
@@ -77,7 +80,7 @@ public class VulcanManager {
                 for (Player p : Bukkit.getOnlinePlayers()) {
                     if (!bossBar.getPlayers().contains(p)) bossBar.addPlayer(p);
                 }
-                spawnVolcanoEffects(); throwLootItem(); tickItemGlowEffects();
+                saveFlowingLava(); spawnVolcanoEffects(); throwLootItem();
                 elapsed += periodTicks;
             }
         }.runTaskTimer(plugin, 0L, periodTicks);
@@ -100,21 +103,26 @@ public class VulcanManager {
         }
     }
 
-    private void tickItemGlowEffects() {
-        Iterator<Map.Entry<Item, String>> it = activeLootItems.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Item, String> e = it.next(); Item item = e.getKey(); String rarity = e.getValue();
-            if (item == null || !item.isValid() || item.isDead()) { it.remove(); continue; }
-            Location loc = item.getLocation().add(0, 0.2, 0);
-            switch (rarity) {
-                case "common" -> loc.getWorld().spawnParticle(org.bukkit.Particle.VILLAGER_HAPPY, loc, 3, 0.1, 0.1, 0.1, 0.0);
-                case "rare" -> loc.getWorld().spawnParticle(org.bukkit.Particle.FALLING_WATER, loc, 4, 0.1, 0.1, 0.1, 0.0);
-                case "epic" -> loc.getWorld().spawnParticle(org.bukkit.Particle.DRAGON_BREATH, loc, 3, 0.1, 0.1, 0.1, 0.01);
-                case "mythic" -> loc.getWorld().spawnParticle(org.bukkit.Particle.TOTEM, loc, 4, 0.1, 0.1, 0.1, 0.05);
-                case "legendary" -> {
-                    loc.getWorld().spawnParticle(org.bukkit.Particle.FLAME, loc, 5, 0.1, 0.1, 0.1, 0.02);
-                    loc.getWorld().spawnParticle(org.bukkit.Particle.LAVA, loc, 1, 0.0, 0.0, 0.0, 0.0);
+    private void saveFlowingLava() {
+        int radius = 10;
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                for (int y = -2; y <= 6; y++) {
+                    Location loc = vulcanLocation.clone().add(x, y, z);
+                    if (loc.getBlock().getType() == Material.LAVA && !originalBlocks.containsKey(loc)) {
+                        originalBlocks.put(loc, Material.AIR);
+                    }
                 }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onItemDamage(EntityDamageEvent event) {
+        if (event.getEntity() instanceof Item item && activeLootItems.containsKey(item)) {
+            EntityDamageEvent.DamageCause c = event.getCause();
+            if (c == EntityDamageEvent.DamageCause.LAVA || c == EntityDamageEvent.DamageCause.FIRE || c == EntityDamageEvent.DamageCause.FIRE_TICK) {
+                event.setCancelled(true);
             }
         }
     }
@@ -122,8 +130,8 @@ public class VulcanManager {
     private void spawnVolcanoEffects() {
         if (vulcanLocation == null || vulcanLocation.getWorld() == null) return;
         Location top = vulcanLocation.clone().add(0, 5, 0);
-        top.getWorld().spawnParticle(org.bukkit.Particle.LAVA, top, 25, 0.6, 0.5, 0.6, 0.2);
-        top.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, top, 15, 0.5, 1.5, 0.5, 0.05);
+        top.getWorld().spawnParticle(org.bukkit.Particle.LAVA, top, 20, 0.5, 0.5, 0.5, 0.15);
+        top.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, top, 10, 0.4, 1.0, 0.4, 0.03);
     }
 
     private void throwLootItem() {
@@ -132,6 +140,10 @@ public class VulcanManager {
         if (items.isEmpty()) return;
         Item dropped = vulcanLocation.getWorld().dropItem(vulcanLocation.clone().add(0, 5, 0), items.get(random.nextInt(items.size())));
         dropped.setVelocity(new Vector((random.nextDouble() - 0.5) * 2.5, 1.1 + random.nextDouble() * 0.7, (random.nextDouble() - 0.5) * 2.5));
+        
+        // ВКЛЮЧАЕМ НАСТОЯЩЕЕ СВЕЧЕНИЕ ПРЕДМЕТА
+        dropped.setGlowing(true);
+        
         activeLootItems.put(dropped, rarity);
     }
 
@@ -151,6 +163,7 @@ public class VulcanManager {
     public void stopEvent() {
         if (eventTask != null) { eventTask.cancel(); eventTask = null; }
         if (bossBar != null) { bossBar.removeAll(); bossBar = null; }
+        HandlerList.unregisterAll(this);
         for (Map.Entry<Location, Material> entry : originalBlocks.entrySet()) {
             entry.getKey().getBlock().setType(entry.getValue());
         }
@@ -161,6 +174,7 @@ public class VulcanManager {
     public void stopCurrentEvent() {
         if (eventTask != null) eventTask.cancel();
         if (bossBar != null) bossBar.removeAll();
+        HandlerList.unregisterAll(this);
         for (Map.Entry<Location, Material> entry : originalBlocks.entrySet()) {
             entry.getKey().getBlock().setType(entry.getValue());
         }
