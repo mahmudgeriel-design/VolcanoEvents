@@ -1,9 +1,5 @@
 package my.vulcan.event;
 
-import net.md_5.bungee.api.chat.ClickEvent;
-import net.md_5.bungee.api.chat.HoverEvent;
-import net.md_5.bungee.api.chat.TextComponent;
-import net.md_5.bungee.api.chat.hover.content.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -18,8 +14,7 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
 
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 public class VulcanManager {
     private final Main plugin;
@@ -27,6 +22,9 @@ public class VulcanManager {
     private Location vulcanLocation;
     private BossBar bossBar;
     private final Random random = new Random();
+    
+    private final Map<Location, Material> originalBlocks = new HashMap<>();
+    private final Map<Item, String> activeLootItems = new HashMap<>();
 
     public VulcanManager(Main plugin) {
         this.plugin = plugin;
@@ -49,7 +47,7 @@ public class VulcanManager {
         World world = Bukkit.getWorld(configWorldName);
         
         if (world == null) {
-            plugin.getLogger().severe("КРИТИЧЕСКАЯ ОШИБКА: Мир '" + configWorldName + "' не найден! Проверьте config.yml.");
+            plugin.getLogger().severe("КРИТИЧЕСКАЯ ОШИБКА: Мир '" + configWorldName + "' не найден!");
             return;
         }
 
@@ -68,15 +66,12 @@ public class VulcanManager {
 
         this.vulcanLocation = new Location(world, x, y, z);
 
-        // Проигрываем только мощный звук грома каждому игроку (без Title)
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1.0f, 0.8f);
         }
 
-        // Отправляем красивое интерактивное сообщение в чат
-        broadcastInteractiveMessage(x, y, z);
-
-        vulcanLocation.getBlock().setType(Material.MAGMA_BLOCK);
+        broadcastSimpleMessage();
+        buildVolcanoStructure();
 
         String barTitle = color(plugin.getConfig().getString("messages.bossbar-title", "&#cc0000&l🌋 Извержение Древнего Вулкана! 🌋"));
         bossBar = Bukkit.createBossBar(barTitle, BarColor.RED, BarStyle.SOLID);
@@ -111,36 +106,95 @@ public class VulcanManager {
 
                 spawnVolcanoEffects();
                 throwLootItem();
+                tickItemGlowEffects();
                 elapsed += periodTicks;
             }
         }.runTaskTimer(plugin, 0L, periodTicks);
     }
+    private void buildVolcanoStructure() {
+        World world = vulcanLocation.getWorld();
+        int baseRadius = 4;
 
-    private void broadcastInteractiveMessage(int x, int y, int z) {
-        TextComponent line1 = new TextComponent(color("\n&#ff1100&l🌋 [ИВЕНТ] ДРЕВНИЙ ВУЛКАН 🌋\n"));
-        TextComponent line2 = new TextComponent(color("&7На сервере началось мощное извержение сокровищ!\n&7Локация вулкана: "));
-        
-        TextComponent clickable = new TextComponent(color("&#ffcc00&l[" + x + ", " + y + ", " + z + "]"));
-        clickable.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(color("&eКликни, чтобы использовать случайный телепорт!"))));
-        
-        String clickCmd = plugin.getConfig().getString("settings.click-command", "/rtp");
-        clickable.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, clickCmd));
-        
-        TextComponent line3 = new TextComponent(color("\n&8» Скорее беги собирать падающие сокровища пяти редкостей!\n"));
+        for (int xOffset = -baseRadius; xOffset <= baseRadius; xOffset++) {
+            for (int zOffset = -baseRadius; zOffset <= baseRadius; zOffset++) {
+                double distance = Math.sqrt(xOffset * xOffset + zOffset * zOffset);
+                if (distance > baseRadius) continue;
 
-        line2.addExtra(clickable);
-        line2.addExtra(line3);
-        
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            player.spigot().sendMessage(line1);
-            player.spigot().sendMessage(line2);
+                int height = (int) (baseRadius - distance) + 1;
+
+                for (int yOffset = 0; yOffset <= height; yOffset++) {
+                    Location blockLoc = vulcanLocation.clone().add(xOffset, yOffset, zOffset);
+                    
+                    if (!originalBlocks.containsKey(blockLoc)) {
+                        originalBlocks.put(blockLoc, blockLoc.getBlock().getType());
+                    }
+
+                    if (xOffset == 0 && zOffset == 0 && yOffset == height) {
+                        blockLoc.getBlock().setType(Material.LAVA);
+                    } else if (distance <= 1.5) {
+                        blockLoc.getBlock().setType(Material.MAGMA_BLOCK);
+                    } else if (random.nextBoolean()) {
+                        blockLoc.getBlock().setType(Material.OBSIDIAN);
+                    } else {
+                        blockLoc.getBlock().setType(Material.CRYING_OBSIDIAN);
+                    }
+                }
+            }
         }
+        Location topLava = vulcanLocation.clone().add(0, baseRadius + 1, 0);
+        if (!originalBlocks.containsKey(topLava)) originalBlocks.put(topLava, topLava.getBlock().getType());
+        topLava.getBlock().setType(Material.LAVA);
+    }
+
+    private void tickItemGlowEffects() {
+        Iterator<Map.Entry<Item, String>> iterator = activeLootItems.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Item, String> entry = iterator.next();
+            Item item = entry.getKey();
+            String rarity = entry.getValue();
+
+            if (item == null || !item.isValid() || item.isDead()) {
+                iterator.remove();
+                continue;
+            }
+
+            Location loc = item.getLocation().add(0, 0.2, 0);
+            
+            switch (rarity) {
+                case "common":
+                    loc.getWorld().spawnParticle(org.bukkit.Particle.VILLAGER_HAPPY, loc, 3, 0.1, 0.1, 0.1, 0.0);
+                    break;
+                case "rare":
+                    loc.getWorld().spawnParticle(org.bukkit.Particle.FALLING_WATER, loc, 4, 0.1, 0.1, 0.1, 0.0);
+                    break;
+                case "epic":
+                    loc.getWorld().spawnParticle(org.bukkit.Particle.DRAGON_BREATH, loc, 3, 0.1, 0.1, 0.1, 0.01);
+                    break;
+                case "mythic":
+                    loc.getWorld().spawnParticle(org.bukkit.Particle.TOTEM, loc, 4, 0.1, 0.1, 0.1, 0.05);
+                    break;
+                case "legendary":
+                    loc.getWorld().spawnParticle(org.bukkit.Particle.FLAME, loc, 5, 0.1, 0.1, 0.1, 0.02);
+                    loc.getWorld().spawnParticle(org.bukkit.Particle.LAVA, loc, 1, 0.0, 0.0, 0.0, 0.0);
+                    break;
+            }
+        }
+    }
+
+    private void broadcastSimpleMessage() {
+        String msg = color(
+            "\n&#ff1100&l🌋 [ИВЕНТ] ДРЕВНИЙ ВУЛКАН 🌋\n" +
+            "&7Где-то в мире началось мощное извержение редких сокровищ!\n" +
+            "&8» Успейте найти его и собрать падающий лут пяти редкостей!\n"
+        );
+        Bukkit.broadcastMessage(msg);
     }
 
     private void spawnVolcanoEffects() {
         if (vulcanLocation == null || vulcanLocation.getWorld() == null) return;
-        vulcanLocation.getWorld().spawnParticle(org.bukkit.Particle.LAVA, vulcanLocation.clone().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0.15);
-        vulcanLocation.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, vulcanLocation.clone().add(0, 2, 0), 8, 0.4, 1, 0.4, 0.03);
+        Location topLoc = vulcanLocation.clone().add(0, 5, 0);
+        topLoc.getWorld().spawnParticle(org.bukkit.Particle.LAVA, topLoc, 25, 0.6, 0.5, 0.6, 0.2);
+        topLoc.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, topLoc, 15, 0.5, 1.5, 0.5, 0.05);
     }
 
     private void throwLootItem() {
@@ -149,12 +203,16 @@ public class VulcanManager {
         if (items.isEmpty()) return;
 
         org.bukkit.inventory.ItemStack itemToDrop = items.get(random.nextInt(items.size()));
-        Item droppedItem = vulcanLocation.getWorld().dropItem(vulcanLocation.clone().add(0, 2, 0), itemToDrop);
         
-        double offsetX = (random.nextDouble() - 0.5) * 2.0;
-        double offsetZ = (random.nextDouble() - 0.5) * 2.0;
-        double offsetY = 0.9 + random.nextDouble() * 0.6;
+        Location dropLoc = vulcanLocation.clone().add(0, 5, 0);
+        Item droppedItem = vulcanLocation.getWorld().dropItem(dropLoc, itemToDrop);
+        
+        double offsetX = (random.nextDouble() - 0.5) * 2.5;
+        double offsetZ = (random.nextDouble() - 0.5) * 2.5;
+        double offsetY = 1.1 + random.nextDouble() * 0.7;
         droppedItem.setVelocity(new Vector(offsetX, offsetY, offsetZ));
+
+        activeLootItems.put(droppedItem, rarity);
     }
 
     private String getRandomRarityByChance() {
@@ -182,6 +240,13 @@ public class VulcanManager {
             bossBar.removeAll();
             bossBar = null;
         }
+
+        for (Map.Entry<Location, Material> entry : originalBlocks.entrySet()) {
+            entry.getKey().getBlock().setType(entry.getValue());
+        }
+        originalBlocks.clear();
+        activeLootItems.clear();
+
         String stopMsg = plugin.getConfig().getString("messages.stop", "&#ff4500&l[ВУЛКАН] &7Магма полностью остыла. Извержение вулкана завершено!");
         Bukkit.broadcastMessage(color(stopMsg));
     }
@@ -189,6 +254,12 @@ public class VulcanManager {
     public void stopCurrentEvent() {
         if (eventTask != null) eventTask.cancel();
         if (bossBar != null) bossBar.removeAll();
+        
+        for (Map.Entry<Location, Material> entry : originalBlocks.entrySet()) {
+            entry.getKey().getBlock().setType(entry.getValue());
+        }
+        originalBlocks.clear();
+        activeLootItems.clear();
     }
 
     public static String color(String text) {
