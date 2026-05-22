@@ -45,21 +45,30 @@ public class VulcanManager {
     public void startEvent() {
         if (eventTask != null) return;
 
-        World world = Bukkit.getWorld(plugin.getConfig().getString("settings.world", "world"));
-        if (world == null) return;
+        // Берём точное имя мира из настроек
+        String configWorldName = plugin.getConfig().getString("settings.world-name", "rtp");
+        World world = Bukkit.getWorld(configWorldName);
+        
+        if (world == null) {
+            plugin.getLogger().severe("КРИТИЧЕСКАЯ ОШИБКА: Мир '" + configWorldName + "' не найден! Проверьте config.yml.");
+            return;
+        }
 
-        int minX = plugin.getConfig().getInt("settings.rtp.min-x", -5000);
+        int minX = plugin.getConfig().getInt("settings.rtp.min-x", 1500);
         int maxX = plugin.getConfig().getInt("settings.rtp.max-x", 5000);
-        int minZ = plugin.getConfig().getInt("settings.rtp.min-z", -5000);
+        int minZ = plugin.getConfig().getInt("settings.rtp.min-z", 1500);
         int maxZ = plugin.getConfig().getInt("settings.rtp.max-z", 5000);
 
         int x = random.nextInt(maxX - minX) + minX;
+        if (random.nextBoolean()) x = -x;
         int z = random.nextInt(maxZ - minZ) + minZ;
+        if (random.nextBoolean()) z = -z;
         int y = world.getHighestBlockYAt(x, z);
+
+        if (y < 60) y = 65; 
 
         this.vulcanLocation = new Location(world, x, y, z);
 
-        // Красивый заголовок на экран для 1.16.5
         String titleText = color("&#ff3300&l🌋 ВУЛКАН ПРОСНУЛСЯ 🌋");
         String subtitleText = color("&7Скорее открывай чат, чтобы узнать координаты!");
         
@@ -68,7 +77,6 @@ public class VulcanManager {
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1.0f, 0.8f);
         }
 
-        // Интерактивное сообщение в чат через Bungee-Chat API (встроено в 1.16.5)
         broadcastInteractiveMessage(x, y, z);
 
         vulcanLocation.getBlock().setType(Material.MAGMA_BLOCK);
@@ -112,18 +120,18 @@ public class VulcanManager {
     }
 
     private void broadcastInteractiveMessage(int x, int y, int z) {
-        // Линии чата с HEX поддержкой
         TextComponent line1 = new TextComponent(color("\n&#ff1100&l🌋 [ИВЕНТ] ДРЕВНИЙ ВУЛКАН 🌋\n"));
         TextComponent line2 = new TextComponent(color("&7На сервере началось мощное извержение сокровищ!\n&7Локация вулкана: "));
         
-        // Кликабельная часть
         TextComponent clickable = new TextComponent(color("&#ffcc00&l[" + x + ", " + y + ", " + z + "]"));
-        clickable.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(color("&eКликни, чтобы скопировать команду навигации!"))));
-        clickable.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/gps start " + x + " " + z));
+        clickable.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(color("&eКликни, чтобы использовать случайный телепорт!"))));
+        
+        // Берём готовую команду прямо из конфига
+        String clickCmd = plugin.getConfig().getString("settings.click-command", "/rtp");
+        clickable.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, clickCmd));
         
         TextComponent line3 = new TextComponent(color("\n&8» Скорее беги собирать падающие сокровища пяти редкостей!\n"));
 
-        // Собираем сообщение воедино
         line2.addExtra(clickable);
         line2.addExtra(line3);
         
@@ -135,9 +143,8 @@ public class VulcanManager {
 
     private void spawnVolcanoEffects() {
         if (vulcanLocation == null || vulcanLocation.getWorld() == null) return;
-        // Для 1.16.5 используем стандартный дым и лаву
-        vulcanLocation.getWorld().spawnParticle(org.bukkit.Particle.LAVA, vulcanLocation.clone().add(0, 1, 0), 10, 0.5, 0.5, 0.5, 0.1);
-        vulcanLocation.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, vulcanLocation.clone().add(0, 2, 0), 5, 0.3, 1, 0.3, 0.02);
+        vulcanLocation.getWorld().spawnParticle(org.bukkit.Particle.LAVA, vulcanLocation.clone().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0.15);
+        vulcanLocation.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, vulcanLocation.clone().add(0, 2, 0), 8, 0.4, 1, 0.4, 0.03);
     }
 
     private void throwLootItem() {
@@ -148,9 +155,9 @@ public class VulcanManager {
         org.bukkit.inventory.ItemStack itemToDrop = items.get(random.nextInt(items.size()));
         Item droppedItem = vulcanLocation.getWorld().dropItem(vulcanLocation.clone().add(0, 2, 0), itemToDrop);
         
-        double offsetX = (random.nextDouble() - 0.5) * 1.5;
-        double offsetZ = (random.nextDouble() - 0.5) * 1.5;
-        double offsetY = 0.8 + random.nextDouble() * 0.5;
+        double offsetX = (random.nextDouble() - 0.5) * 2.0;
+        double offsetZ = (random.nextDouble() - 0.5) * 2.0;
+        double offsetY = 0.9 + random.nextDouble() * 0.6;
         droppedItem.setVelocity(new Vector(offsetX, offsetY, offsetZ));
     }
 
@@ -188,7 +195,6 @@ public class VulcanManager {
         if (bossBar != null) bossBar.removeAll();
     }
 
-    // Метод для поддержки HEX-цветов (формат &#FFFFFF) в 1.16.5
     public static String color(String text) {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("&#[a-fA-F0-9]{6}");
         java.util.regex.Matcher matcher = pattern.matcher(text);
