@@ -45,7 +45,6 @@ public class VulcanManager {
     public void startEvent() {
         if (eventTask != null) return;
 
-        // Берём точное имя мира из настроек
         String configWorldName = plugin.getConfig().getString("settings.world-name", "rtp");
         World world = Bukkit.getWorld(configWorldName);
         
@@ -69,14 +68,12 @@ public class VulcanManager {
 
         this.vulcanLocation = new Location(world, x, y, z);
 
-        String titleText = color("&#ff3300&l🌋 ВУЛКАН ПРОСНУЛСЯ 🌋");
-        String subtitleText = color("&7Скорее открывай чат, чтобы узнать координаты!");
-        
+        // Проигрываем только мощный звук грома каждому игроку (без Title)
         for (Player player : Bukkit.getOnlinePlayers()) {
-            player.sendTitle(titleText, subtitleText, 10, 80, 10);
             player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_LIGHTNING_BOLT_THUNDER, 1.0f, 0.8f);
         }
 
+        // Отправляем красивое интерактивное сообщение в чат
         broadcastInteractiveMessage(x, y, z);
 
         vulcanLocation.getBlock().setType(Material.MAGMA_BLOCK);
@@ -126,7 +123,6 @@ public class VulcanManager {
         TextComponent clickable = new TextComponent(color("&#ffcc00&l[" + x + ", " + y + ", " + z + "]"));
         clickable.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(color("&eКликни, чтобы использовать случайный телепорт!"))));
         
-        // Берём готовую команду прямо из конфига
         String clickCmd = plugin.getConfig().getString("settings.click-command", "/rtp");
         clickable.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, clickCmd));
         
