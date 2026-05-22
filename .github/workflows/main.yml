@@ -12,9 +12,9 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Build with Maven
-      run: mvn -f "Вулканическое событие/pom.xml" clean package
+      run: mvn -f VulcanEvent/pom.xml clean package
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: VulcanPlugin
-        path: "Вулканическое событие/target/*.jar"
+        path: VulcanEvent/target/*.jar
