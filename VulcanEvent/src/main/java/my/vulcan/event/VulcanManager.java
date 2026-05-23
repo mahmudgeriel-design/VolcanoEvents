@@ -87,29 +87,49 @@ public class VulcanManager implements Listener {
     }
     private void buildVolcanoStructure() {
         World w = vulcanLocation.getWorld();
-        int maxHeight = 9; 
-        int maxRadius = 8; 
+        int cx = vulcanLocation.getBlockX();
+        int cy = vulcanLocation.getBlockY();
+        int cz = vulcanLocation.getBlockZ();
 
-        for (int y = 0; y <= maxHeight; y++) {
-            double currentRadius = maxRadius * (1.0 - ((double) y / (maxHeight + 1)));
-            for (int x = -maxRadius; x <= maxRadius; x++) {
-                for (int z = -maxRadius; z <= maxRadius; z++) {
-                    double distance = Math.sqrt(x * x + z * z);
-                    if (distance <= currentRadius) {
-                        Location loc = vulcanLocation.clone().add(x, y, z);
-                        if (!originalBlocks.containsKey(loc)) originalBlocks.put(loc, loc.getBlock().getType());
+        // Высота горы — 7 блоков. Строим послойно снизу вверх, расширяя низ
+        for (int yOffset = 0; yOffset <= 7; yOffset++) {
+            // Нижний слой (yOffset = 0) имеет радиус 7 блоков, верхний (yOffset = 7) — радиус 0
+            int currentRadius = 7 - yOffset;
+            int targetY = cy + yOffset;
 
-                        if (y >= maxHeight - 1) {
-                            if (distance <= 1.8) {
-                                loc.getBlock().setType(Material.LAVA); 
+            for (int x = -currentRadius; x <= currentRadius; x++) {
+                for (int z = -currentRadius; z <= currentRadius; z++) {
+                    // Проверка на круглую форму слоя горы
+                    if (x * x + z * z <= currentRadius * currentRadius) {
+                        Location loc = new Location(w, cx + x, targetY, cz + z);
+                        if (!originalBlocks.containsKey(loc)) {
+                            originalBlocks.put(loc, loc.getBlock().getType());
+                        }
+
+                        // ФИНАЛЬНЫЙ СЛОЙ (ВЕРШИНА — КРАТЕР)
+                        if (yOffset == 7) {
+                            loc.getBlock().setType(Material.LAVA); // Самая верхняя точка — источник лавы
+                        } 
+                        // ПРЕДПОСЛЕДНИЙ СЛОЙ (БОРТИКИ КРАТЕРА)
+                        else if (yOffset == 6) {
+                            if (x * x + z * z <= 1) {
+                                loc.getBlock().setType(Material.LAVA); // Внутри кратера — лава
                             } else {
-                                loc.getBlock().setType(Material.MAGMA_BLOCK); 
+                                loc.getBlock().setType(Material.MAGMA_BLOCK); // Края кратера из магмы
                             }
-                        } else {
-                            if (distance <= currentRadius - 1.5) {
-                                loc.getBlock().setType(Material.MAGMA_BLOCK); 
-                            } else {
-                                loc.getBlock().setType(random.nextBoolean() ? Material.OBSIDIAN : Material.CRYING_OBSIDIAN);
+                        } 
+                        // СТЕНЫ ГОРИ (Ступени снаружи)
+                        else {
+                            // Если блок находится на самом краю слоя, делаем его видимым (обсидиан/магма)
+                            if (x * x + z * z >= (currentRadius - 1) * (currentRadius - 1)) {
+                                double r = random.nextDouble();
+                                if (r < 0.4) loc.getBlock().setType(Material.OBSIDIAN);
+                                else if (r < 0.8) loc.getBlock().setType(Material.CRYING_OBSIDIAN);
+                                else loc.getBlock().setType(Material.MAGMA_BLOCK);
+                            } 
+                            // Внутренности горы забиваем магмой для оптимизации
+                            else {
+                                loc.getBlock().setType(Material.MAGMA_BLOCK);
                             }
                         }
                     }
@@ -119,10 +139,10 @@ public class VulcanManager implements Listener {
     }
 
     private void saveFlowingLava() {
-        int radius = 14;
+        int radius = 12;
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                for (int y = -2; y <= 11; y++) {
+                for (int y = -2; y <= 10; y++) {
                     Location loc = vulcanLocation.clone().add(x, y, z);
                     if (loc.getBlock().getType() == Material.LAVA && !originalBlocks.containsKey(loc)) {
                         originalBlocks.put(loc, Material.AIR);
@@ -144,11 +164,11 @@ public class VulcanManager implements Listener {
 
     private void spawnVolcanoEffects() {
         if (vulcanLocation == null || vulcanLocation.getWorld() == null) return;
-        Location top = vulcanLocation.clone().add(0, 9, 0);
-        top.getWorld().spawnParticle(org.bukkit.Particle.LAVA, top, 25, 1.0, 0.5, 1.0, 0.3);
-        top.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, top, 15, 0.8, 2.0, 0.8, 0.05);
-        if (random.nextDouble() < 0.15) {
-            top.getWorld().playSound(top, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 0.6f);
+        Location top = vulcanLocation.clone().add(0, 7, 0);
+        top.getWorld().spawnParticle(org.bukkit.Particle.LAVA, top, 20, 0.5, 0.5, 0.5, 0.2);
+        top.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, top, 12, 0.5, 1.5, 0.5, 0.04);
+        if (random.nextDouble() < 0.1) {
+            top.getWorld().playSound(top, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.5f);
         }
     }
 
@@ -157,14 +177,14 @@ public class VulcanManager implements Listener {
         List<org.bukkit.inventory.ItemStack> items = MenuManager.getRarityItems(rarity);
         if (items.isEmpty()) return;
         
-        Location spawnLoc = vulcanLocation.clone().add(0, 9.5, 0);
+        Location spawnLoc = vulcanLocation.clone().add(0, 7.5, 0);
         Item dropped = vulcanLocation.getWorld().dropItem(spawnLoc, items.get(random.nextInt(items.size())));
         dropped.setGlowing(true); 
         
         dropped.setVelocity(new Vector(
-            (random.nextDouble() - 0.5) * 2.8, 
-            1.4 + random.nextDouble() * 0.8, 
-            (random.nextDouble() - 0.5) * 2.8
+            (random.nextDouble() - 0.5) * 2.4, 
+            1.3 + random.nextDouble() * 0.6, 
+            (random.nextDouble() - 0.5) * 2.4
         ));
         activeLootItems.put(dropped, rarity);
     }
