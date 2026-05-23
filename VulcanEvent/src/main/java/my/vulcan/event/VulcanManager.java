@@ -155,10 +155,8 @@ public class VulcanManager implements Listener {
     @EventHandler
     public void onItemDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Item item && activeLootItems.containsKey(item)) {
-            EntityDamageEvent.DamageCause c = event.getCause();
-            if (c == EntityDamageEvent.DamageCause.LAVA || c == EntityDamageEvent.DamageCause.FIRE || c == EntityDamageEvent.DamageCause.FIRE_TICK) {
-                event.setCancelled(true);
-            }
+            // Полностью блокируем ЛЮБОЙ урон для вещей из вулкана (лава, огонь, взрывы, кактусы)
+            event.setCancelled(true);
         }
     }
 
