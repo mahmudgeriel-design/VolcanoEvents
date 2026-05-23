@@ -177,14 +177,16 @@ public class VulcanManager implements Listener {
         List<org.bukkit.inventory.ItemStack> items = MenuManager.getRarityItems(rarity);
         if (items.isEmpty()) return;
         
+        // Вещи спавнятся на вершине
         Location spawnLoc = vulcanLocation.clone().add(0, 7.5, 0);
         Item dropped = vulcanLocation.getWorld().dropItem(spawnLoc, items.get(random.nextInt(items.size())));
         dropped.setGlowing(true); 
         
+        // Снизили импульс (умножили на 0.8 вместо 2.4), чтобы лут падал строго под ноги на гору!
         dropped.setVelocity(new Vector(
-            (random.nextDouble() - 0.5) * 2.4, 
-            1.3 + random.nextDouble() * 0.6, 
-            (random.nextDouble() - 0.5) * 2.4
+            (random.nextDouble() - 0.5) * 0.8, 
+            0.8 + random.nextDouble() * 0.4, 
+            (random.nextDouble() - 0.5) * 0.8
         ));
         activeLootItems.put(dropped, rarity);
     }
