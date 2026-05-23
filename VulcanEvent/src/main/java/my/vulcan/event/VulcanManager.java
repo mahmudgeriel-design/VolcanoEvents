@@ -7,7 +7,6 @@ import org.bukkit.World;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -53,7 +52,7 @@ public class VulcanManager implements Listener {
 
         int x = random.nextInt(maxX - minX) + minX; if (random.nextBoolean()) x = -x;
         int z = random.nextInt(maxZ - minZ) + minZ; if (random.nextBoolean()) z = -z;
-        int y = Math.max(world.getHighestBlockYAt(x, z), 65);
+        int y = Math.max(world.getHighestBlockYAt(x, z), 60);
 
         this.vulcanLocation = new Location(world, x, y, z);
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -66,6 +65,7 @@ public class VulcanManager implements Listener {
         buildVolcanoStructure();
         String barTitle = color(plugin.getConfig().getString("messages.bossbar-title", "&#cc0000&l🌋 Извержение Древнего Вулкана! 🌋"));
         bossBar = Bukkit.createBossBar(barTitle, BarColor.RED, BarStyle.SOLID);
+        bossBar.setProgress(1.0);
         
         long durationTicks = plugin.getConfig().getInt("settings.duration-seconds", 300) * 20L;
         long periodTicks = plugin.getConfig().getInt("settings.drop-period-ticks", 20);
@@ -85,29 +85,44 @@ public class VulcanManager implements Listener {
             }
         }.runTaskTimer(plugin, 0L, periodTicks);
     }
-
     private void buildVolcanoStructure() {
-        World w = vulcanLocation.getWorld(); int r = 4;
-        for (int x = -r; x <= r; x++) {
-            for (int z = -r; z <= r; z++) {
-                double d = Math.sqrt(x*x + z*z); if (d > r) continue;
-                int h = (int) (r - d) + 1;
-                for (int y = 0; y <= h; y++) {
-                    Location loc = vulcanLocation.clone().add(x, y, z);
-                    if (!originalBlocks.containsKey(loc)) originalBlocks.put(loc, loc.getBlock().getType());
-                    if (x == 0 && z == 0 && y == h) loc.getBlock().setType(Material.LAVA);
-                    else if (d <= 1.5) loc.getBlock().setType(Material.MAGMA_BLOCK);
-                    else loc.getBlock().setType(random.nextBoolean() ? Material.OBSIDIAN : Material.CRYING_OBSIDIAN);
+        World w = vulcanLocation.getWorld();
+        int maxHeight = 9; 
+        int maxRadius = 8; 
+
+        for (int y = 0; y <= maxHeight; y++) {
+            double currentRadius = maxRadius * (1.0 - ((double) y / (maxHeight + 1)));
+            for (int x = -maxRadius; x <= maxRadius; x++) {
+                for (int z = -maxRadius; z <= maxRadius; z++) {
+                    double distance = Math.sqrt(x * x + z * z);
+                    if (distance <= currentRadius) {
+                        Location loc = vulcanLocation.clone().add(x, y, z);
+                        if (!originalBlocks.containsKey(loc)) originalBlocks.put(loc, loc.getBlock().getType());
+
+                        if (y >= maxHeight - 1) {
+                            if (distance <= 1.8) {
+                                loc.getBlock().setType(Material.LAVA); 
+                            } else {
+                                loc.getBlock().setType(Material.MAGMA_BLOCK); 
+                            }
+                        } else {
+                            if (distance <= currentRadius - 1.5) {
+                                loc.getBlock().setType(Material.MAGMA_BLOCK); 
+                            } else {
+                                loc.getBlock().setType(random.nextBoolean() ? Material.OBSIDIAN : Material.CRYING_OBSIDIAN);
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
     private void saveFlowingLava() {
-        int radius = 10;
+        int radius = 14;
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                for (int y = -2; y <= 6; y++) {
+                for (int y = -2; y <= 11; y++) {
                     Location loc = vulcanLocation.clone().add(x, y, z);
                     if (loc.getBlock().getType() == Material.LAVA && !originalBlocks.containsKey(loc)) {
                         originalBlocks.put(loc, Material.AIR);
@@ -129,21 +144,28 @@ public class VulcanManager implements Listener {
 
     private void spawnVolcanoEffects() {
         if (vulcanLocation == null || vulcanLocation.getWorld() == null) return;
-        Location top = vulcanLocation.clone().add(0, 5, 0);
-        top.getWorld().spawnParticle(org.bukkit.Particle.LAVA, top, 20, 0.5, 0.5, 0.5, 0.15);
-        top.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, top, 10, 0.4, 1.0, 0.4, 0.03);
+        Location top = vulcanLocation.clone().add(0, 9, 0);
+        top.getWorld().spawnParticle(org.bukkit.Particle.LAVA, top, 25, 1.0, 0.5, 1.0, 0.3);
+        top.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, top, 15, 0.8, 2.0, 0.8, 0.05);
+        if (random.nextDouble() < 0.15) {
+            top.getWorld().playSound(top, org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 0.6f);
+        }
     }
 
     private void throwLootItem() {
         String rarity = getRandomRarityByChance();
         List<org.bukkit.inventory.ItemStack> items = MenuManager.getRarityItems(rarity);
         if (items.isEmpty()) return;
-        Item dropped = vulcanLocation.getWorld().dropItem(vulcanLocation.clone().add(0, 5, 0), items.get(random.nextInt(items.size())));
-        dropped.setVelocity(new Vector((random.nextDouble() - 0.5) * 2.5, 1.1 + random.nextDouble() * 0.7, (random.nextDouble() - 0.5) * 2.5));
         
-        // ВКЛЮЧАЕМ НАСТОЯЩЕЕ СВЕЧЕНИЕ ПРЕДМЕТА
-        dropped.setGlowing(true);
+        Location spawnLoc = vulcanLocation.clone().add(0, 9.5, 0);
+        Item dropped = vulcanLocation.getWorld().dropItem(spawnLoc, items.get(random.nextInt(items.size())));
+        dropped.setGlowing(true); 
         
+        dropped.setVelocity(new Vector(
+            (random.nextDouble() - 0.5) * 2.8, 
+            1.4 + random.nextDouble() * 0.8, 
+            (random.nextDouble() - 0.5) * 2.8
+        ));
         activeLootItems.put(dropped, rarity);
     }
 
