@@ -13,8 +13,8 @@ public final class Main extends JavaPlugin {
         
         this.vulcanManager = new VulcanManager(this);
         
-        if (getCommand("vulcan") != null) {
-            getCommand("vulcan").setExecutor(new VulcanCommand(this));
+        if (getCommand("vulcans") != null) {
+            getCommand("vulcans").setExecutor(new VulcanCommand(this));
         }
         getServer().getPluginManager().registerEvents(new MenuManager(this), this);
         

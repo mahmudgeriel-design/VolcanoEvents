@@ -23,7 +23,7 @@ public class VulcanCommand implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            sender.sendMessage(VulcanManager.color("&6Помощь: /vulcan [start/stop/reload/add]"));
+            sender.sendMessage(VulcanManager.color("&6Помощь: /vulcans [start/stop/reload/add]"));
             return true;
         }
 
